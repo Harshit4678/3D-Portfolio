@@ -1,6 +1,6 @@
 "use client";
 import { motion } from "framer-motion";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, ThreeEvent } from "@react-three/fiber";
 import {
   OrbitControls,
   useGLTF,
@@ -9,6 +9,8 @@ import {
 } from "@react-three/drei";
 import { useRef, useEffect, useState } from "react";
 import * as THREE from "three";
+import useSfx from "@/hooks/useSfx"; // path adjust kar lo
+import { useInView } from "react-intersection-observer";
 
 const highlights = [
   { title: "Projects", value: "15+", desc: "Real-world apps & freelance work" },
@@ -23,7 +25,7 @@ const models = [
   "/gym.glb",
 ];
 
-function ModelLoop() {
+function ModelLoop({ onPointerOver }: { onPointerOver?: () => void }) {
   const group = useRef<THREE.Group>(null);
   const [current, setCurrent] = useState(0);
 
@@ -67,14 +69,76 @@ function ModelLoop() {
   });
 
   return (
-    <primitive ref={group} object={scene} scale={1.1} position={[0, -0.8, 0]} />
+    <primitive
+      ref={group}
+      object={scene}
+      scale={1.1}
+      position={[0, -0.8, 0]}
+      onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+        e.stopPropagation();
+        onPointerOver?.();
+      }}
+    />
   );
 }
 
 export default function About() {
+  const {
+    playHover,
+    playClick,
+    playModelHover,
+    playGreeting,
+    playChime,
+
+    forceUnlock,
+  } = useSfx();
+
+  const { ref: aboutRef, inView } = useInView({
+    triggerOnce: false, // 👈 ab bar-bar trigger hoga
+    threshold: 0.45,
+  });
+
+  const [hasPlayedGreeting, setHasPlayedGreeting] = useState(false);
+
+  const lightRef = useRef<THREE.PointLight>(null);
+  // Greeting play when section becomes visible
+  useEffect(() => {
+    if (inView && !hasPlayedGreeting) {
+      setHasPlayedGreeting(true); // 👈 ek hi baar bajao
+
+      // Unlock & play greeting
+      forceUnlock();
+      playGreeting();
+
+      // chime thoda delay se
+      setTimeout(() => playChime(), 1500);
+
+      // Light pulse effect
+      if (lightRef.current) {
+        let t = 0;
+        const id = setInterval(() => {
+          if (!lightRef.current) return;
+          lightRef.current.intensity = 0.5 + Math.abs(Math.sin(t)) * 1.2;
+          t += 0.25;
+        }, 60);
+        setTimeout(() => clearInterval(id), 2200);
+      }
+    }
+  }, [inView, hasPlayedGreeting, playGreeting, playChime, forceUnlock]);
+
+  // If autoplay was blocked, retry after first interaction
+  useEffect(() => {
+    if (inView) {
+      forceUnlock();
+      playGreeting();
+      setTimeout(() => playChime(), 1500);
+    }
+  }, [inView]);
+
   return (
     <section
       id="about"
+      ref={aboutRef}
       className="relative min-h-screen w-full flex flex-col md:flex-row items-center justify-center bg-black px-6 md:px-16 py-10"
     >
       {/* Left Side: 3D Model */}
@@ -91,7 +155,12 @@ export default function About() {
             intensity={0.8}
             color="#ffffff"
           />
-          <pointLight position={[0, 3, 0]} intensity={0.5} color="#ffffff" />
+          <pointLight
+            ref={lightRef}
+            position={[0, 3, 0]}
+            intensity={0.5}
+            color="#ffffff"
+          />
 
           <OrbitControls
             enableZoom={false}
@@ -100,7 +169,7 @@ export default function About() {
             maxPolarAngle={Math.PI / 2}
           />
 
-          <ModelLoop />
+          <ModelLoop onPointerOver={() => playModelHover()} />
 
           {/* Floor */}
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1, 0]}>
@@ -126,6 +195,8 @@ export default function About() {
 
       {/* Right Side: Text Container */}
       <motion.div
+        onMouseEnter={() => playHover()}
+        onClick={() => playClick()}
         className="ml-0 md:ml-10 w-full md:w-1/2 h-full md:h-[85vh] mt-8 md:mt-0 perspective"
         initial={{ opacity: 0, x: 100 }}
         whileInView={{ opacity: 1, x: 0 }}
